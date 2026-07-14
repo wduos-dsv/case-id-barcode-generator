@@ -1,7 +1,8 @@
 import sys
 import os
+import re
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, 
-                             QFileDialog, QLabel, QMessageBox, QHBoxLayout)
+                             QFileDialog, QLabel, QMessageBox, QHBoxLayout, QComboBox)
 from PyQt6.QtCore import Qt
 
 # --- Import your processing libraries ---
@@ -22,7 +23,7 @@ class BarcodeApp(QWidget):
     def initUI(self):
         # Set up window properties
         self.setWindowTitle("Case ID Barcode Generator")
-        self.setMinimumSize(450, 180)
+        self.setMinimumSize(480, 220)
         
         # Main layout
         layout = QVBoxLayout()
@@ -39,6 +40,22 @@ class BarcodeApp(QWidget):
         file_layout.addWidget(self.file_label, stretch=4)
         file_layout.addWidget(btn_browse, stretch=1)
         layout.addLayout(file_layout)
+        
+        # Sorting dropdown section
+        sort_layout = QHBoxLayout()
+        sort_label = QLabel("Ordenar por:")
+        sort_label.setStyleSheet("font-weight: bold;")
+        
+        self.sort_dropdown = QComboBox()
+        self.sort_dropdown.addItems([
+            "SKU",
+            "Endereço",
+            "Tipo de Caixa"
+        ])
+        
+        sort_layout.addWidget(sort_label, stretch=1)
+        sort_layout.addWidget(self.sort_dropdown, stretch=4)
+        layout.addLayout(sort_layout)
         
         # Process Button
         self.btn_process = QPushButton("Iniciar Processamento")
@@ -59,7 +76,6 @@ class BarcodeApp(QWidget):
         
         if file_path:
             self.selected_file_path = file_path
-            # Truncate string visually if it's too long
             display_name = os.path.basename(file_path)
             self.file_label.setText(f"Arquivo: {display_name}")
             self.file_label.setStyleSheet("color: #000; font-style: normal; font-weight: bold;")
@@ -102,13 +118,34 @@ class BarcodeApp(QWidget):
                     if qty_value not in (360, 400, "360", "400"):
                         rows_data.append(row_values)
             
-            def get_sort_key(r):
-                try:
-                    return int(r[1])
-                except (ValueError, TypeError):
-                    return 999999
-                    
-            rows_data.sort(key=get_sort_key)
+            # Get selected sorting method from dropdown index
+            sort_method = self.sort_dropdown.currentIndex()
+            
+            if sort_method == 0:
+                # Option 1: By Item Code (Column B, numeric index 1)
+                def get_item_key(r):
+                    try:
+                        return int(r[1])
+                    except (ValueError, TypeError):
+                        return 999999
+                rows_data.sort(key=get_item_key)
+                
+            elif sort_method == 1:
+                # Option 2: By Location/Street (Column A, string index 0)
+                # Splitting text/numbers guarantees "BLA2" sorts before "BLA10"
+                def get_location_key(r):
+                    val = str(r[0]) if r[0] is not None else ""
+                    # Split letters and numbers for natural sorting (e.g., 'BLA', 1)
+                    parts = re.split(r'(\d+)', val)
+                    return [int(text) if text.isdigit() else text.lower() for text in parts]
+                rows_data.sort(key=get_location_key)
+                
+            elif sort_method == 2:
+                # Option 3: By Box Type (Column D, string index 3)
+                def get_box_key(r):
+                    val = str(r[3]) if r[3] is not None else ""
+                    return val.lower()
+                rows_data.sort(key=get_box_key)
             
             # 4. Clear and rewrite grid
             for row in range(4, 102):
@@ -156,7 +193,7 @@ class BarcodeApp(QWidget):
                 if sheet_name != 'Imprimir':
                     wb.remove(wb[sheet_name])
             
-            # 7. Save output file alongside the original file location
+            # 7. Save output file
             output_dir = os.path.dirname(self.selected_file_path)
             output_path = os.path.join(output_dir, 'Imprimir.xlsx')
             wb.save(output_path)
