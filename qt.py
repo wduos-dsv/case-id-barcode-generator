@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton,
                              QFileDialog, QLabel, QMessageBox, QHBoxLayout, QComboBox)
 from PyQt6.QtCore import Qt
 
-# --- Import your processing libraries ---
+# --- Import processing libraries ---
 import openpyxl
 from openpyxl.drawing.image import Image
 from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
@@ -59,7 +59,7 @@ class BarcodeApp(QWidget):
         
         # Process Button
         self.btn_process = QPushButton("Iniciar Processamento")
-        self.btn_process.setEnabled(False) # Disabled until a file is loaded
+        self.btn_process.setEnabled(False) 
         self.btn_process.setStyleSheet("""
             QPushButton { background-color: #0078d4; color: white; font-weight: bold; padding: 8px; border-radius: 4px; }
             QPushButton:disabled { background-color: #cccccc; color: #666666; }
@@ -109,14 +109,22 @@ class BarcodeApp(QWidget):
             CELL_WIDTH_PX = COL_WIDTH_CHAR * 7.1 
             CELL_HEIGHT_PX = ROW_HEIGHT_PT * 1.333
             
+            # --- INITIALIZE REMOVAL COUNTER ---
+            full_pallets_removed = 0
+            
             # 3. Extract, filter, and sort data
             rows_data = []
             for row in range(4, 102):
                 row_values = [ws.cell(row=row, column=col).value for col in range(1, 7)]
                 if row_values[1] is not None:
                     qty_value = row_values[2]
+                    
+                    # Rule 2: Keep only rows that do NOT equal 360 or 400
                     if qty_value not in (360, 400, "360", "400"):
                         rows_data.append(row_values)
+                    else:
+                        # Increment the counter every time we skip a row matching 360 or 400
+                        full_pallets_removed += 1
             
             # Get selected sorting method from dropdown index
             sort_method = self.sort_dropdown.currentIndex()
@@ -132,10 +140,8 @@ class BarcodeApp(QWidget):
                 
             elif sort_method == 1:
                 # Option 2: By Location/Street (Column A, string index 0)
-                # Splitting text/numbers guarantees "BLA2" sorts before "BLA10"
                 def get_location_key(r):
                     val = str(r[0]) if r[0] is not None else ""
-                    # Split letters and numbers for natural sorting (e.g., 'BLA', 1)
                     parts = re.split(r'(\d+)', val)
                     return [int(text) if text.isdigit() else text.lower() for text in parts]
                 rows_data.sort(key=get_location_key)
@@ -204,7 +210,13 @@ class BarcodeApp(QWidget):
                 if os.path.exists(f"temp_barcode_{row}.png"):
                     os.remove(f"temp_barcode_{row}.png")
                     
-            QMessageBox.information(self, "Sucesso", f"Processamento concluído!\nSalvo em: {output_path}")
+            # --- MODIFIED SUCCESS POPUP WITH THE REQUESTED COUNTER ---
+            success_msg = (
+                f"Processamento concluído com sucesso!\n"
+                f"Salvo em: {output_path}\n\n"
+                f"Número de pallets FULL neste pedido: {full_pallets_removed}"
+            )
+            QMessageBox.information(self, "Sucesso", success_msg)
             
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Ocorreu um erro durante o processamento:\n{str(e)}")
