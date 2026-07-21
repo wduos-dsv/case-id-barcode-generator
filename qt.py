@@ -81,14 +81,18 @@ class BarcodeApp(QWidget):
                 
             ws = wb['Imprimir']
             
-            # Dimension Calculations
-            BARCODE_WIDTH_PX = 130
-            BARCODE_HEIGHT_PX = 40
-            ROW_HEIGHT_PT = 45
-            COL_WIDTH_CHAR = 22
+            # --- CELL & BARCODE SIZING CONFIGURATION ---
+            # 1. Expand Excel Cell dimensions to leave ample room for borders
+            ROW_HEIGHT_PT = 45          # Larger row height (45pt)
+            COL_WIDTH_CHAR = 22         # Larger column width (22 chars)
             
-            CELL_WIDTH_PX = int(COL_WIDTH_CHAR * 7.1)   # ~156px
-            CELL_HEIGHT_PX = int(ROW_HEIGHT_PT * 1.333) # ~60px
+            CELL_WIDTH_PX = int(COL_WIDTH_CHAR * 7.1)    # ~156px
+            CELL_HEIGHT_PX = int(ROW_HEIGHT_PT * 1.333)  # ~60px
+            
+            # 2. Keep barcode image size fixed to original compact dimensions
+            BARCODE_WIDTH_PX = 107
+            BARCODE_HEIGHT_PX = 34
+            # -------------------------------------------------------------
             
             full_pallets_removed = 0
             rows_data = []
@@ -138,23 +142,25 @@ class BarcodeApp(QWidget):
                     # 1. Generate raw barcode image
                     code128 = barcode.get('code128', str(cell_value), writer=ImageWriter())
                     raw_filename = f"temp_raw_{row}"
-                    code128.save(raw_filename, options={'write_text': False})
+                    code128.save(raw_filename, options={'write_text': False, 'module_margin': 1})
                     
-                    # 2. Pad barcode image inside a cell-sized canvas (Centers image cleanly)
+                    # 2. Resize barcode to compact size
                     raw_img = PILImage.open(f"{raw_filename}.png")
                     barcode_resized = raw_img.resize((BARCODE_WIDTH_PX, BARCODE_HEIGHT_PX), PILImage.Resampling.LANCZOS)
                     
-                    # White background canvas matching cell pixel dimensions
-                    canvas = PILImage.new('RGB', (CELL_WIDTH_PX, CELL_HEIGHT_PX), (255, 255, 255))
+                    # 3. Create a TRANSPARENT canvas (RGBA with 0 alpha) matching cell size
+                    # This prevents solid white pixels from obscuring Excel's cell borders
+                    canvas = PILImage.new('RGBA', (CELL_WIDTH_PX, CELL_HEIGHT_PX), (0, 0, 0, 0))
+                    
                     paste_x = (CELL_WIDTH_PX - BARCODE_WIDTH_PX) // 2
                     paste_y = (CELL_HEIGHT_PX - BARCODE_HEIGHT_PX) // 2
                     
                     canvas.paste(barcode_resized, (paste_x, paste_y))
                     
                     centered_filename = f"temp_barcode_{row}.png"
-                    canvas.save(centered_filename)
+                    canvas.save(centered_filename, format="PNG")
                     
-                    # 3. Add centered canvas image to worksheet
+                    # 4. Add image to cell safely
                     ws.row_dimensions[row].height = ROW_HEIGHT_PT
                     img = Image(centered_filename)
                     ws.add_image(img, f'F{row}')
