@@ -82,16 +82,17 @@ class BarcodeApp(QWidget):
             ws = wb['Imprimir']
             
             # --- CELL & BARCODE SIZING CONFIGURATION ---
-            # 1. Expand Excel Cell dimensions to leave ample room for borders
-            ROW_HEIGHT_PT = 45          # Larger row height (45pt)
-            COL_WIDTH_CHAR = 22         # Larger column width (22 chars)
+            # 1. Expand Excel Cell dimensions
+            ROW_HEIGHT_PT = 60          # Larger row height (60pt)
+            COL_WIDTH_CHAR = 32         # Larger column width (32 chars)
             
-            CELL_WIDTH_PX = int(COL_WIDTH_CHAR * 7.1)    # ~156px
-            CELL_HEIGHT_PX = int(ROW_HEIGHT_PT * 1.333)  # ~60px
+            # Pixel dimensions for bounding transparent canvas
+            CELL_WIDTH_PX = int(COL_WIDTH_CHAR * 7.1)    # ~227px
+            CELL_HEIGHT_PX = int(ROW_HEIGHT_PT * 1.333)  # ~80px
             
-            # 2. Keep barcode image size fixed to original compact dimensions
-            BARCODE_WIDTH_PX = 107
-            BARCODE_HEIGHT_PX = 34
+            # 2. Scaled-up barcode dimensions inside the canvas
+            BARCODE_WIDTH_PX = 190
+            BARCODE_HEIGHT_PX = 58
             # -------------------------------------------------------------
             
             full_pallets_removed = 0
@@ -139,17 +140,21 @@ class BarcodeApp(QWidget):
                 cell_value = ws[f'E{row}'].value
                 
                 if cell_value and not str(cell_value).startswith('='):
-                    # 1. Generate raw barcode image
+                    # 1. Generate raw barcode with defined module size to prevent sub-pixel drops
                     code128 = barcode.get('code128', str(cell_value), writer=ImageWriter())
                     raw_filename = f"temp_raw_{row}"
-                    code128.save(raw_filename, options={'write_text': False, 'module_margin': 1})
+                    code128.save(raw_filename, options={
+                        'write_text': False, 
+                        'module_margin': 1,
+                        'module_width': 0.3,
+                        'dpi': 300
+                    })
                     
-                    # 2. Resize barcode to compact size
+                    # 2. Resize using NEAREST to preserve crisp, binary black/white line ratios
                     raw_img = PILImage.open(f"{raw_filename}.png")
-                    barcode_resized = raw_img.resize((BARCODE_WIDTH_PX, BARCODE_HEIGHT_PX), PILImage.Resampling.LANCZOS)
+                    barcode_resized = raw_img.resize((BARCODE_WIDTH_PX, BARCODE_HEIGHT_PX), PILImage.Resampling.NEAREST)
                     
-                    # 3. Create a TRANSPARENT canvas (RGBA with 0 alpha) matching cell size
-                    # This prevents solid white pixels from obscuring Excel's cell borders
+                    # 3. Create a TRANSPARENT canvas (RGBA) matching scaled cell dimensions
                     canvas = PILImage.new('RGBA', (CELL_WIDTH_PX, CELL_HEIGHT_PX), (0, 0, 0, 0))
                     
                     paste_x = (CELL_WIDTH_PX - BARCODE_WIDTH_PX) // 2
